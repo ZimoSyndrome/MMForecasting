@@ -1,0 +1,4 @@
+# Auto-generated cache files — do not commit
+*.parquet
+*.pickle
+*.pkl

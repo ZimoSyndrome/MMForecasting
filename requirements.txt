@@ -3,6 +3,12 @@ pandas>=2.0.0
 numpy>=1.24.0
 matplotlib>=3.7.0
 yfinance>=0.2.30
+python-dotenv>=1.0.0
+
+# Data Sources
+pandas-datareader>=0.10.0    # FRED (core + extended)
+requests>=2.31.0             # BLS direct API, BEA direct API
+pyarrow>=14.0.0              # parquet cache for BLS/BEA/news data
 
 # Statistical/Econometric
 statsmodels>=0.14.0
@@ -15,6 +21,7 @@ xgboost>=2.0.0
 
 # Deep Learning
 torch>=2.0.0
+# transformers>=4.40.0       # Phase 4: FinBERT news sentiment (install when needed)
 
 # Jupyter
 jupyter>=1.0.0
