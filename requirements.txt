@@ -1,3 +1,11 @@
+# DEPRECATED: see pyproject.toml (PEP 621). Retained for pip compatibility.
+# Install via:  pip install -e .      (or)    pip install -r requirements.txt
+#
+# Optional extras (pyproject.toml):
+#   pip install -e ".[news]"     # Phase 4 FinBERT
+#   pip install -e ".[regime]"   # Phase 5C hmmlearn
+#   pip install -e ".[dev]"      # pytest / ruff / mypy
+
 # Core Dependencies
 pandas>=2.0.0
 numpy>=1.24.0

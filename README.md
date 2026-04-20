@@ -6,13 +6,19 @@ A quantitative research project that forecasts equity log-returns by combining a
 
 ## Models
 
-| Model | Class | Mean equation | Variance |
-|---|---|---|---|
-| **ARIMAX-GARCH** | Econometric | Lagged returns + macro lags (OLS) | GARCH(1,1) on residuals |
-| **PCA+EN** | Statistical ML | PCA-reduced macro matrix → ElasticNet | — |
-| **PLS** | Latent-factor | Partial Least Squares (latent components) | — |
-| **XGBoost** | ML (tree) | Gradient-boosted trees over full feature matrix | — |
-| **LSTM** | Deep Learning | Sequence model over price + macro context | — |
+Seven models currently implemented (all walk-forward tested over final 252 trading days). Training window differs by family — see Section 7.
+
+| # | Model | Class | Mean equation | Variance | Training window |
+|---|---|---|---|---|---|
+| 1 | **ARIMA-GARCH (baseline)** | Econometric | ARMA(p\*,q\*) on returns, no exog | GARCH(1,1) | Expanding |
+| 2 | **XGBoost — price-only** | ML (tree) | 7 price features (5 AR lags + rolling vol + ewma vol) | — | Expanding |
+| 3 | **XGBoost + Macro** | ML (tree) | 7 price + 21 macro features (shift-1) | — | Expanding |
+| 4 | **LSTM — price-only** | Deep learning | 7 price features, seq_len=10, hidden=32 | — | Rolling 504d |
+| 5 | **LSTM + Macro** | Deep learning | 7 price + PCA(21→10) macro, hidden=64, 2 layers, dropout 0.2 | — | Rolling 504d |
+| 6 | **PCA+EN ARIMAX-GARCH** | Statistical ML | AR(1–5) + PCA(k=5) of 105-col macro → ElasticNet | GARCH(1,1) on residuals | **Rolling `ARIMAX_WINDOW` (grid-search optimised)** |
+| 7 | **PLS ARIMAX-GARCH** | Latent-factor | AR(1–3) + PLS(c=3) latent factors | GARCH(1,1) on residuals | **Rolling `ARIMAX_WINDOW` (grid-search optimised)** |
+
+**Planned additions** (see §9 Roadmap): 4 more models (XGB/LSTM × EN-selected macro, XGB/LSTM × explicit regime variable) + HMM-based regime detection variants.
 
 ---
 
@@ -82,24 +88,55 @@ The exogenous design matrix is:
 
 $$X_{\text{exog}} \in \mathbb{R}^{T \times (K \cdot L_{\max})}$$
 
-### 6. PCA+ElasticNet
+### 6. PCA+ElasticNet (rolling window — Phase 2.5)
 
-Principal components $\mathbf{V} \in \mathbb{R}^{(K L_{\max}) \times d}$ extracted from $X_{\text{exog}}$:
+Principal components $\mathbf{V}^{(t)} \in \mathbb{R}^{(K L_{\max}) \times k}$ extracted from the **rolling** subset of $X_{\text{exog}}$ over $[t - W, t)$, where $W = $ `ARIMAX_WINDOW`:
 
-$$\mathbf{Z} = X_{\text{exog}} \mathbf{V}, \quad \mathbf{Z} \in \mathbb{R}^{T \times d}$$
+$$\mathbf{V}^{(t)} = \text{PCA}_k\!\bigl(X_{\text{exog}}[t{-}W : t]\bigr), \qquad \mathbf{Z}_t = X_{\text{exog}}[t{-}W : t] \, \mathbf{V}^{(t)}$$
 
-ElasticNet fitted on $[\mathbf{Z}, X_{\text{AR}}]$:
+ElasticNetCV fitted on $[\mathbf{Z}_t, X_{\text{AR}}[t{-}W : t]]$ at each walk-forward step:
 
-$$\hat{r}_t = \mathbf{z}_t^\top \boldsymbol{\gamma} + \mathbf{x}_{\text{AR},t}^\top \boldsymbol{\delta}$$
+$$\hat{r}_t = \mathbf{z}_t^\top \boldsymbol{\gamma}^{(t)} + \mathbf{x}_{\text{AR},t}^\top \boldsymbol{\delta}^{(t)}$$
 
 $$\min_{\boldsymbol{\gamma},\boldsymbol{\delta}} \;\frac{1}{2n}\|\mathbf{r} - \hat{\mathbf{r}}\|^2 + \lambda\!\left(\alpha \|\boldsymbol{\gamma}\|_1 + \frac{1-\alpha}{2}\|\boldsymbol{\gamma}\|^2\right)$$
 
+The **rolling re-fit** keeps the covariance estimate calibrated to the current macro regime. An expanding-window fit on 13 years of data (2012–2025) spans ZIRP, COVID, the 2021–2023 inflation shock, and the fastest rate-hike cycle since 1980 — the eigenvectors of a 13-year covariance matrix are regime averages that describe no single period well. Within a 2-year window the covariance structure is approximately stationary.
+
+#### 3-factor interpretation (analogous to yield-curve factor models)
+
+Applying PCA to $X_{\text{exog}}$ extracts three dominant directions, analogous to Level/Slope/Curvature factors in Nelson-Siegel yield-curve decompositions:
+
+| Component | Variance share | Macro interpretation |
+|---|---|---|
+| **PC1 — Level** | 60–80% | Global risk-on/risk-off. DGS10, credit spread, VIX all co-move; driven by Fed policy expectations and growth surprises. |
+| **PC2 — Slope** | 10–20% | Short vs. long end diverge. Yield-curve steepening/flattening; recession vs. expansion transitions. |
+| **PC3 — Curvature** | 5–10% | Belly vs. wings. Term premium dynamics, intermediate supply/demand. |
+| PC4+ | < 5% | Noise. ElasticNet L1 penalty typically shrinks these to exactly zero. |
+
+**Loading stability:** At the 2020 COVID crash and 2022 tightening, PC1 loadings *rotate* — front-end instruments decouple from long-end ones. The rolling window re-estimates eigenvectors after each shift, keeping the model calibrated. An expanding-window PCA lags regime rotations by months.
+
+**ElasticNet's role:** With k=5 PCA components and 5 AR lags, L1 regularisation shrinks uninformative macro PCs to *exactly zero* — when the macro signal is unreliable (low SNR, regime transition), the model degrades gracefully to intercept-only GARCH(1,1). This sparsity mechanism is absent from XGBoost/LSTM, which is why raw macro features hurt those models but help PCA+EN.
+
 ### 7. Walk-forward evaluation
 
-For test dates $t \in \{T - T_{\text{test}}, \ldots, T\}$:
-- **Training set**: all observations $\tau < t$ (expanding window)
-- **Forecast**: one-step-ahead $\hat{r}_t \mid \mathcal{F}_{t-1}$
-- No future data ever enters any training window
+For test dates $t \in \{T - T_{\text{test}}, \ldots, T\}$, the training window depends on the model family:
+
+| Model family | Training window |
+|---|---|
+| ARIMA-GARCH baseline | Expanding: $[0, t)$ |
+| XGBoost (both variants) | Expanding: $[0, t)$ |
+| LSTM (both variants) | Rolling 504 days: $[t - 504, t)$ |
+| PCA+EN / PLS ARIMAX-GARCH | Rolling `ARIMAX_WINDOW`: $[t - W, t)$, $W$ optimised |
+
+One-step-ahead forecast at each step: $\hat{r}_t \mid \mathcal{F}_{t-1}$. **No future data ever enters any training window.**
+
+### 8. Window length optimisation (Phase 2.5)
+
+The rolling window $W$ for PCA+EN and PLS is selected by walk-forward grid search on a held-out validation fold within the training data (no lookahead into the test window):
+
+$$W^* = \arg\max_{W \in \{126, 252, 378, 504, 630, 756\}} \; \frac{1}{|V|} \sum_{t \in V} \mathbb{1}\!\bigl(\text{sign}(\hat{r}_t^{(W)}) = \text{sign}(r_t)\bigr)$$
+
+where $V$ is the last 126 days of the training set (`VAL_SIZE = 126`). MSE is used as tiebreak. The selected $W^*$ is then applied to both PCA+EN and PLS backtests. Candidate range [0.5Y, 3Y] bracketed around the 2Y practitioner convention (Ang & Bekaert 2002).
 
 ---
 
@@ -201,14 +238,14 @@ This two-step reindex ensures that publication dates landing on weekends/holiday
 ```
 mmforecasting/
 ├── notebooks/
-│   └── forecasting_analysis.ipynb   # Main analysis (101 cells)
+│   └── forecasting_analysis.ipynb   # Main analysis (102 cells, post-Phase 2.5)
 ├── src/
-│   ├── macro_utils.py               # Shared: index normalisation, transforms, validation
+│   ├── macro_utils.py               # Shared: index normalisation, transforms, ADF gate
 │   ├── fred_pipeline.py             # Core FRED (5) + Extended FRED (13 series)
 │   ├── bls_pipeline.py              # BLS direct API (4 series, graceful degradation)
 │   ├── bea_pipeline.py              # BEA NIPA API (3 quarterly series)
-│   ├── arimax_models.py             # PCA+EN and PLS implementations
-│   └── evaluation.py               # Walk-forward metrics
+│   ├── arimax_models.py             # PCA+EN and PLS rolling-window implementations
+│   └── evaluation.py                # Walk-forward metrics
 ├── .cache/                          # Parquet cache (gitignored)
 ├── .env                             # API keys (FRED, BEA, BLS, Alpaca, News)
 ├── requirements.txt
@@ -247,10 +284,18 @@ TICKER     = "AAPL"         # Target equity
 START_DATE = "2012-01-01"   # Data start (FRED extended data available from ~2004)
 END_DATE   = "2025-12-31"   # Data end
 TEST_SIZE  = 252            # Walk-forward test window (trading days)
-N_AR_LAGS  = 5              # AR lags in mean equation
-N_EXOG_LAGS = 5             # Macro feature lags
-PCA_K      = 10             # PCA components fed to ElasticNet
-N_COMP_PLS = 5              # PLS latent components
+
+# ARIMAX mean-equation hyperparameters
+N_AR_LAGS_EX = 5            # AR lag candidates for ElasticNet selection
+N_EXOG_LAGS  = 5            # Macro feature lag depth (per series)
+PCA_K        = 5            # PCA components fed to ElasticNet
+N_COMP_PLS   = 3            # PLS latent components
+N_AR_FIXED   = 3            # Fixed AR lags in PLS mean equation
+
+# Rolling-window optimisation (Phase 2.5)
+WINDOW_CANDIDATES = [126, 252, 378, 504, 630, 756]  # 0.5Y → 3Y
+ARIMAX_WINDOW     = 504     # Default 2Y; overwritten by cell 80 grid search
+VAL_SIZE          = 126     # Validation fold for window selection (6 months)
 ```
 
 ---
@@ -279,6 +324,34 @@ Exog features        : 105  (21 macro vars × 5 lags)
 - This project evaluates **statistical predictability**, not economic profitability. No transaction costs, slippage, or risk constraints are applied.
 - Residual dependence may remain due to regime shifts, structural breaks, or long-memory effects.
 - Results should be interpreted as **model comparison**, not trading signals.
+
+---
+
+## Development History
+
+### Completed phases
+
+| Phase | Description | Key artefact(s) |
+|---|---|---|
+| **0** | `macro_utils.py` + `fred_pipeline.py` refactor — shared utilities (transforms, ffill, ADF gate) | `src/macro_utils.py` |
+| **1** | Extended FRED (13 series, 3 tiers: daily/weekly/monthly) | `fred_pipeline.py::EXTENDED_FRED` |
+| **2** | BLS direct API (4 series) with rate-limit-aware caching and graceful degradation | `src/bls_pipeline.py` |
+| **Notebook fix A** | Cell 18 — guard BLS visualisation against empty DataFrame (rate-limit path) | cell 18 |
+| **Notebook fix B** | Cell 40 — unified macro matrix combining FRED + extended FRED + BLS + BEA via `dir()` guards | cell 40 |
+| **3** | BEA direct API (3 quarterly NIPA series: GDP growth, PCE inflation delta, corp profits) | `src/bea_pipeline.py` |
+| **Notebook fix C** | LSTM + Macro robustness — `LSTM_MACRO_CONFIG` (hidden=64, 2 layers, dropout 0.2), PCA(10) macro compression inside `run_lstm_backtest`, ±5σ clipping | cells 37, 74, 76 |
+| **2.5** | Rolling window PCA/PLS + window optimisation + comprehensive notebook presentation. New cell 80 performs walk-forward grid search over 6 candidate windows on a 6-month validation fold. PCA+EN and PLS backtests (cells 81, 84) updated to rolling slice. 3-factor PCA interpretation documented in cells 63, 78 | cells 4, 63, 65, 78, 79, 80, 81, 83, 84 |
+
+### Planned phases (not yet implemented)
+
+| Phase | Description | Status |
+|---|---|---|
+| **5A** | EN-selected macro for XGB/LSTM — back-project EN coefficients through PCA loadings to rank original macro series by L1 survival frequency; feed top-K to XGB and LSTM (2 new models) | ⬜ Planned |
+| **5B** | Explicit regime variable (rule-based composite: T10Y3M + VIXCLS + NFCI via expanding percentile ranks) for XGB and LSTM (2 new models) | ⬜ Planned |
+| **5C** | **HMM regime detection** — Hidden Markov Model on returns + volatility (and optional multivariate extension with VIX/yield spread). Outputs regime posteriors as features for XGB/LSTM. See plan file for 3 implementation variants. | ⬜ Planned |
+| **4** | News sentiment via Alpaca News API + FinBERT (`news_pipeline.py`), gated by `USE_NEWS` flag | ⬜ Not started |
+
+All planning documents are preserved in `/Users/zimo/.claude/plans/concurrent-spinning-cat.md` (append-only history).
 
 ---
 

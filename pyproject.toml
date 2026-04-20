@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mmforecasting"
+version = "0.1.0"
+description = "Macro-augmented walk-forward forecasting of SPY daily log-returns."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Zimo Chen"}]
+license = {text = "MIT"}
+
+dependencies = [
+    # Core
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "matplotlib>=3.7.0",
+    "yfinance>=0.2.30",
+    "python-dotenv>=1.0.0",
+
+    # Data sources
+    "pandas-datareader>=0.10.0",  # FRED (core + extended)
+    "requests>=2.31.0",           # BLS + BEA direct API
+    "pyarrow>=14.0.0",            # parquet cache
+
+    # Statistical / econometric
+    "statsmodels>=0.14.0",
+    "arch>=6.0.0",
+    "scipy>=1.11.0",
+
+    # Machine learning
+    "scikit-learn>=1.3.0",
+    "xgboost>=2.0.0",
+
+    # Deep learning
+    "torch>=2.0.0",
+
+    # Notebook
+    "jupyter>=1.0.0",
+    "notebook>=7.0.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+news = ["transformers>=4.40.0"]   # Phase 4: FinBERT news sentiment
+regime = ["hmmlearn>=0.3.0"]       # Phase 5C: HMM regime detection
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

@@ -43,5 +43,14 @@ data/processed/*.parquet
 ehthumbs.db
 Thumbs.db
 
-# Claude
+# Claude — keep out of the public repo entirely (local-only memory)
 .claude/
+CLAUDE.md
+
+# Notebook clutter
+Untitled*.ipynb
+forecasting_analysis.html
+.ipynb_checkpoints/
+
+# Build caches
+.cache/
