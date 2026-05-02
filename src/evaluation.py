@@ -5,9 +5,9 @@ Metrics
 -------
 MSE            : mean squared error on point forecasts
 MAE            : mean absolute error on point forecasts
-Dir Acc        : % of steps where sign(pred) == sign(actual); 50% = random
-CI Coverage    : % of actuals inside predicted 95% CI; target ~95%
-VaR Breach     : % of actuals that breach the 95% VaR; target ~5%
+Dir Acc        : % of steps where sign(pred) == sign(actual). 50% is random.
+CI Coverage    : % of actuals inside predicted 95% CI. Target ~95%.
+VaR Breach     : % of actuals that breach the 95% VaR. Target ~5%.
 """
 
 import numpy as np

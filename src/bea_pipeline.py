@@ -2,15 +2,16 @@
 BEA NIPA quarterly data pipeline.
 
 Fetches GDP growth, PCE Price Index, and Corporate Profits after tax from the
-Bureau of Economic Analysis NIPA REST API (free key, no chunking needed — BEA
-supports Year=ALL in a single request).
+Bureau of Economic Analysis NIPA REST API (free key, no chunking needed.
+BEA supports Year=ALL in a single request).
 
 Series fetched
 --------------
 T10101 / A191RL  → GDP_growth_pct    : QoQ % change (already stationary, transform=none)
-T20304 / DPCERG  → d_yoy_PCE_PI     : diff of YoY log-diff (4 qtrs) — change in annual
-                                       PCE inflation; stationary under 2021-23 inflation spike
-T11200 / A055RC  → yoy_CorpProfits   : Corp Profits after tax → yoy log-diff (4 qtrs)
+T20304 / DPCERG  → d_yoy_PCE_PI     : diff of YoY log-diff (4 qtrs). Captures the
+                                       change in annual PCE inflation. Stays stationary
+                                       under the 2021-23 inflation spike.
+T11200 / A055RC  → yoy_CorpProfits   : Corp Profits after tax. yoy log-diff (4 qtrs).
 
 Release lags
 ------------
@@ -19,8 +20,8 @@ Corp Profits: 45 calendar days after quarter-end (third estimate)
 
 Index contract
 --------------
-All outputs are tz-naive midnight DatetimeIndex (quarter-start dates before
-release-lag shift; trading-calendar dates after alignment).
+All outputs are tz-naive midnight DatetimeIndex. Quarter-start dates before
+release-lag shift, trading-calendar dates after alignment.
 
 Graceful degradation
 --------------------
@@ -65,7 +66,7 @@ BEA_SERIES = [
         "lags":        4,
         "release_lag": 30,
         "ffill_limit": 70,
-        "description": "PCE Price Index — change in YoY log-diff (stationary under inflation breaks)",
+        "description": "PCE Price Index. Change in YoY log-diff. Stationary under inflation breaks.",
     },
     {
         "table":       "T11200",
@@ -75,7 +76,7 @@ BEA_SERIES = [
         "lags":        4,
         "release_lag": 45,
         "ffill_limit": 70,
-        "description": "Corp Profits after tax — YoY log-diff (4 quarters)",
+        "description": "Corp Profits after tax. YoY log-diff (4 quarters).",
     },
 ]
 
@@ -163,7 +164,7 @@ def fetch_bea_raw(api_key: str) -> pd.DataFrame:
     """
     if not api_key:
         warnings.warn(
-            "BEA_API_KEY is not set — skipping BEA fetch. "
+            "BEA_API_KEY is not set. Skipping BEA fetch. "
             "Set BEA_API_KEY in .env to enable GDP/PCE/CorpProfits features."
         )
         return pd.DataFrame()
@@ -180,7 +181,7 @@ def fetch_bea_raw(api_key: str) -> pd.DataFrame:
         frames[cfg["series_code"]] = s
 
     if not any(not s.empty for s in frames.values()):
-        warnings.warn("BEA: all series returned empty — fetch_bea_raw returning empty DataFrame.")
+        warnings.warn("BEA: all series returned empty. fetch_bea_raw returning empty DataFrame.")
         return pd.DataFrame()
 
     return pd.DataFrame(frames)
@@ -200,7 +201,7 @@ def build_bea_features(
 
     Parameters
     ----------
-    bea_raw    : output of fetch_bea_raw() — wide quarterly DataFrame
+    bea_raw    : output of fetch_bea_raw(). Wide quarterly DataFrame.
     daily_index: tz-naive midnight DatetimeIndex of the trading calendar
 
     Returns

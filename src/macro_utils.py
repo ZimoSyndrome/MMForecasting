@@ -23,10 +23,11 @@ apply_transform() dispatches by transform name:
   "diff"            : first difference (for yield/rate levels)
   "log_diff"        : log first difference (for price/activity indices)
   "yoy_log_diff"    : year-over-year log difference (for money supply, CPI, GDP)
-  "d_yoy_log_diff"  : diff of year-over-year log diff (change in annual inflation;
-                       stationary under structural breaks like 2021-2023 inflation spike)
+  "d_yoy_log_diff"  : diff of year-over-year log diff. Captures the change in
+                       annual inflation. Stationary under structural breaks
+                       like the 2021-2023 inflation spike.
   "pct_change"      : simple percentage change
-  "none"            : identity — series is already stationary (e.g. NFCI, STLFSI4)
+  "none"            : identity. Series is already stationary (e.g. NFCI, STLFSI4)
 """
 
 import numpy as np
@@ -90,8 +91,8 @@ def apply_transform(
     series    : raw level Series (any frequency)
     transform : one of {"diff", "log_diff", "yoy_log_diff", "d_yoy_log_diff", "pct_change", "none"}
     lags      : number of periods for diff-based transforms.
-                For yoy_log_diff on monthly data use lags=12;
-                on quarterly data use lags=4.
+                For yoy_log_diff on monthly data use lags=12.
+                On quarterly data use lags=4.
                 Ignored for "none" and "pct_change".
 
     Returns
@@ -106,8 +107,9 @@ def apply_transform(
         return np.log(series.clip(lower=1e-10)).diff(lags)
     elif transform == "d_yoy_log_diff":
         # First difference of the year-over-year log change.
-        # For quarterly data (lags=4): captures the *change* in annual inflation —
-        # stationary even during structural breaks like the 2021-2023 inflation spike.
+        # For quarterly data (lags=4) this captures the *change* in annual
+        # inflation. Stays stationary even during structural breaks like the
+        # 2021-2023 inflation spike.
         return np.log(series.clip(lower=1e-10)).diff(lags).diff()
     elif transform == "pct_change":
         return series.pct_change(lags)
@@ -203,7 +205,7 @@ def validate_features(
     from statsmodels.tsa.stattools import adfuller
 
     print(f"\n{'=' * 65}")
-    print(f"DIAGNOSTIC — {label}")
+    print(f"DIAGNOSTIC. {label}")
     print(f"{'=' * 65}")
     print(f"  {'Column':<28} {'Non-NaN%':>9} {'ADF p':>8}  {'Pass?':>6}")
     print(f"  {'-' * 56}")
@@ -234,7 +236,7 @@ def validate_features(
             except ValueError as e:
                 err = str(e).lower()
                 if "constant" in err or "collinear" in err or "singular" in err:
-                    # Constant or near-constant series — trivially stationary, skip ADF
+                    # Constant or near-constant series. Trivially stationary, skip ADF.
                     adf_p = float("nan")
                     stationary_str = "const"
                 else:
@@ -243,7 +245,7 @@ def validate_features(
                     failures.append(f"{col}: ADF raised ValueError: {e}")
         else:
             adf_p          = float("nan")
-            stationary_str = "—"
+            stationary_str = "-"
 
         print(
             f"  {col:<28} {nonnull_frac:>8.1%}  {adf_p:>7.3f}  {stationary_str:>6}"
@@ -254,7 +256,7 @@ def validate_features(
     if failures:
         msg = "\n".join(f"  • {f}" for f in failures)
         raise AssertionError(
-            f"\nDiagnostic FAILED — [{label}] — {len(failures)} issue(s):\n{msg}"
+            f"\nDiagnostic FAILED. [{label}], {len(failures)} issue(s):\n{msg}"
         )
 
     print("  All checks passed ✓")

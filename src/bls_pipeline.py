@@ -1,14 +1,14 @@
 """
 BLS (Bureau of Labor Statistics) direct-API feature pipeline.
 
-Fetches series available only on the BLS public API — not easily accessible
-through FRED — and produces stationary, lookahead-safe daily features.
+Fetches series available only on the BLS public API. These aren't easily
+accessible through FRED. Produces stationary, lookahead-safe daily features.
 
 API used
 --------
 BLS Public Data API v2 (POST)
   URL  : https://api.bls.gov/publicAPI/v2/timeseries/data/
-  Auth : optional — works without a key under reduced limits.
+  Auth : optional. Works without a key under reduced limits.
 
 Limits without a key (IP-tracked):
   • 25 requests per day
@@ -20,7 +20,7 @@ Limits with BLS_API_KEY set:
   • 50 series per request
   • 20-year date range per request
 
-Usage: set BLS_API_KEY in .env for production; leave empty for development.
+Usage: set BLS_API_KEY in .env for production. Leave empty for development.
 The pipeline detects the key automatically from the environment.
 
 Chunking
@@ -80,7 +80,7 @@ BLS_SERIES = {
         "yoy_lags":     1,
         "release_lag":  15,
         "ffill_limit":  25,
-        "description":  "Shelter CPI (SA) — MoM log-diff",
+        "description":  "Shelter CPI (SA), MoM log-diff",
     },
     "CUSR0000SAM": {
         "output":       "mom_MedicalCPI",
@@ -88,7 +88,7 @@ BLS_SERIES = {
         "yoy_lags":     1,
         "release_lag":  15,
         "ffill_limit":  25,
-        "description":  "Medical Care CPI (SA) — MoM log-diff",
+        "description":  "Medical Care CPI (SA), MoM log-diff",
     },
     "CES0500000003": {
         "output":       "d_HourlyEarnings",
@@ -96,7 +96,7 @@ BLS_SERIES = {
         "yoy_lags":     1,
         "release_lag":  5,
         "ffill_limit":  25,
-        "description":  "Avg hourly earnings, private sector — MoM log-diff",
+        "description":  "Avg hourly earnings, private sector, MoM log-diff",
     },
     "JTS00000000JOR": {
         "output":       "d_JOLTS",
@@ -104,7 +104,7 @@ BLS_SERIES = {
         "yoy_lags":     1,
         "release_lag":  35,
         "ffill_limit":  25,
-        "description":  "Job openings rate (JOLTS) — first difference",
+        "description":  "Job openings rate (JOLTS), first difference",
     },
 }
 
@@ -168,7 +168,7 @@ def _post_bls(
 
     status = data.get("status", "")
     if status == "REQUEST_NOT_PROCESSED":
-        # Daily rate limit reached — surface as a typed exception so callers
+        # Daily rate limit reached. Surface as a typed exception so callers
         # can catch it and degrade gracefully without crashing the pipeline.
         raise BLSRateLimitError(
             f"BLS daily request limit reached (IP quota exhausted). "
@@ -192,11 +192,11 @@ def _parse_bls_response(resp_json: dict) -> pd.DataFrame:
     Period codes handled
     --------------------
     M01–M12  : monthly → first day of the month (e.g. M03 2023 → 2023-03-01)
-    M13      : annual average — skipped (not a unique time point)
+    M13      : annual average. Skipped (not a unique time point).
     Q01–Q04  : quarterly → first day of the quarter
     Others   : skipped with a warning
 
-    Values are strings (may contain commas); cast to float.  Non-numeric
+    Values are strings (may contain commas). Cast to float. Non-numeric
     values (e.g. suppressed "(D)") become NaN.
 
     Returns
@@ -216,20 +216,20 @@ def _parse_bls_response(resp_json: dict) -> pd.DataFrame:
             if period.startswith("M"):
                 month_num = int(period[1:])
                 if month_num == 13:
-                    continue          # annual average — skip
+                    continue          # annual average, skip
                 if not (1 <= month_num <= 12):
-                    warnings.warn(f"BLS: unexpected period {period!r} for {sid} — skipping")
+                    warnings.warn(f"BLS: unexpected period {period!r} for {sid}, skipping")
                     continue
                 date = pd.Timestamp(year=year, month=month_num, day=1)
             elif period.startswith("Q"):
                 qnum = int(period[1:])
                 if not (1 <= qnum <= 4):
-                    warnings.warn(f"BLS: unexpected period {period!r} for {sid} — skipping")
+                    warnings.warn(f"BLS: unexpected period {period!r} for {sid}, skipping")
                     continue
                 month_num = (qnum - 1) * 3 + 1
                 date = pd.Timestamp(year=year, month=month_num, day=1)
             else:
-                warnings.warn(f"BLS: unrecognised period code {period!r} for {sid} — skipping")
+                warnings.warn(f"BLS: unrecognised period code {period!r} for {sid}, skipping")
                 continue
 
             # Parse value
@@ -324,7 +324,7 @@ def fetch_bls_raw(
     end              : ISO date string for the modelling end   (e.g. "2025-12-31")
     api_key          : BLS registration key, or None (auto-detected from env)
     extra_buf_months : months to fetch before start for transform warmup
-    cache_dir        : directory for parquet cache files; None = auto-detect
+    cache_dir        : directory for parquet cache files. None means auto-detect.
 
     Returns
     -------
@@ -374,8 +374,8 @@ def fetch_bls_raw(
     try:
         raw = fetch_chunked(_fetch_window, str(buf_start.date()), end, chunk_years=max_years)
     except BLSRateLimitError as e:
-        # Daily quota exhausted — return an empty DataFrame rather than crashing.
-        # The pipeline continues; BLS features will be absent from the design matrix.
+        # Daily quota exhausted. Return an empty DataFrame rather than crashing.
+        # The pipeline continues. BLS features will be absent from the design matrix.
         warnings.warn(
             f"BLS data unavailable (rate limit): {e}\n"
             "  → BLS features will be skipped this run.  "
@@ -429,7 +429,7 @@ def build_bls_features(
 
     if bls_raw.empty:
         warnings.warn(
-            "build_bls_features received an empty DataFrame — "
+            "build_bls_features received an empty DataFrame. "
             "returning empty features (BLS data unavailable).",
             stacklevel=2,
         )
@@ -438,7 +438,7 @@ def build_bls_features(
     for sid, cfg in BLS_SERIES.items():
         if sid not in bls_raw.columns:
             warnings.warn(
-                f"BLS: series {sid!r} absent from raw data — skipping column "
+                f"BLS: series {sid!r} absent from raw data, skipping column "
                 f"{cfg['output']!r}.",
                 stacklevel=2,
             )
@@ -448,7 +448,7 @@ def build_bls_features(
 
         if raw_s.empty:
             warnings.warn(
-                f"BLS: series {sid!r} has no non-NaN values — skipping.",
+                f"BLS: series {sid!r} has no non-NaN values, skipping.",
                 stacklevel=2,
             )
             continue
@@ -459,7 +459,7 @@ def build_bls_features(
 
         if transformed.empty:
             warnings.warn(
-                f"BLS: {sid!r} is empty after {cfg['transform']!r} transform — skipping.",
+                f"BLS: {sid!r} is empty after {cfg['transform']!r} transform, skipping.",
                 stacklevel=2,
             )
             continue
@@ -481,7 +481,7 @@ def build_bls_features(
 
     if not result_cols:
         raise RuntimeError(
-            "build_bls_features: all BLS series failed — nothing to return."
+            "build_bls_features: all BLS series failed. Nothing to return."
         )
 
     return pd.DataFrame(result_cols, index=daily_index)
@@ -496,7 +496,7 @@ def log_bls_config(
     tier    = "registered (higher limits)" if api_key else "public / no key"
 
     print("=" * 65)
-    print("BLS DIRECT-API BLOCK — CONFIGURATION LOG")
+    print("BLS DIRECT-API BLOCK CONFIGURATION LOG")
     print("=" * 65)
     print(f"  API tier : {tier}")
     print(f"  Endpoint : {BLS_V2_URL}")
@@ -511,7 +511,7 @@ def log_bls_config(
             continue
         out_col = cfg["output"]
         if out_col not in bls_features.columns:
-            print(f"  {sid:<18} {out_col:<22} — absent in features")
+            print(f"  {sid:<18} {out_col:<22} absent in features")
             continue
         nonnull_pct = bls_features[out_col].notna().mean() * 100
         print(
